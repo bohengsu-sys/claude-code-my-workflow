@@ -2,8 +2,14 @@
 # enforce-isolation.sh — PreToolUse hook enforcing pipeline isolation
 #
 # Reviewer agents are READ-ONLY. They may only write to quality_reports/
-# for their reports. Enforced for Edit, Write, AND Bash tools to close
-# the shell-based write bypass (sed -i, python3 -c, redirections, etc.).
+# for their reports. Enforced for Edit, Write, AND Bash tools.
+#
+# For Edit/Write: uses realpath canonicalization to prevent path traversal
+# (e.g., quality_reports/../CLAUDE.md would resolve outside the allowed dir).
+#
+# For Bash: blocks ALL write-capable commands from reviewer agents.
+# No substring exceptions — too easy to bypass with command padding.
+# Reviewers should document issues in reports; fixers implement changes.
 #
 # Fails CLOSED on parse errors (security hook — block if unsure).
 #
@@ -47,45 +53,61 @@ fi
 
 # --- Reviewer agent detected — enforce isolation ---
 
-# Helper: check if a path is under the quality_reports/ directory (anchored match)
-is_quality_reports_path() {
-    local path="$1"
-    # Normalize: strip leading ./ if present
-    path="${path#./}"
-    # Anchored check: must start with quality_reports/
-    [[ "$path" == quality_reports/* || "$path" == */quality_reports/* ]]
-}
-
-# For Edit/Write: block unless targeting quality_reports/
+# For Edit/Write: block unless targeting quality_reports/ (with realpath check)
 if [[ "$TOOL_NAME" == "Edit" || "$TOOL_NAME" == "Write" ]]; then
     if ! FILE_PATH=$(echo "$INPUT" | jq -er '.tool_input.file_path' 2>/dev/null); then
         echo "BLOCKED by enforce-isolation: Failed to parse file_path from hook input." >&2
         exit 2
     fi
-    if is_quality_reports_path "$FILE_PATH"; then
+
+    # Resolve the canonical path to prevent traversal attacks
+    # (e.g., quality_reports/../CLAUDE.md → /project/CLAUDE.md)
+    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+    ALLOWED_DIR="$PROJECT_DIR/quality_reports"
+
+    # Handle both absolute and relative paths
+    if [[ "$FILE_PATH" == /* ]]; then
+        CANONICAL="$FILE_PATH"
+    else
+        CANONICAL="$PROJECT_DIR/$FILE_PATH"
+    fi
+
+    # Resolve .. and symlinks. Use Python as portable realpath fallback.
+    if command -v realpath >/dev/null 2>&1; then
+        # realpath may fail if parent dirs don't exist yet; use -m for logical resolution
+        CANONICAL=$(realpath -m "$CANONICAL" 2>/dev/null) || CANONICAL=""
+    else
+        CANONICAL=$(python3 -c "import os; print(os.path.normpath('$CANONICAL'))" 2>/dev/null) || CANONICAL=""
+    fi
+
+    if [[ -z "$CANONICAL" ]]; then
+        echo "BLOCKED by enforce-isolation: Could not resolve path '$FILE_PATH'." >&2
+        exit 2
+    fi
+
+    # Check: resolved path must be under quality_reports/
+    if [[ "$CANONICAL" == "$ALLOWED_DIR"/* ]]; then
         exit 0
     fi
+
     echo "BLOCKED by enforce-isolation: Reviewer agent '$AGENT_NAME' cannot edit files outside quality_reports/. File the issue in your report; a fixer agent will implement it." >&2
     exit 2
 fi
 
-# For Bash: block commands that write to the filesystem
+# For Bash: block ALL write-capable commands from reviewer agents.
+# No exceptions — substring-based allowlists for Bash are too easy to bypass.
+# Reviewers use Bash only for read-only operations (grep, cat, ls, diff, git log).
 if [[ "$TOOL_NAME" == "Bash" ]]; then
     CMD=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null) || CMD=""
     if [[ -z "$CMD" ]]; then
         exit 0
     fi
 
-    # Allow read-only commands (grep, cat, head, tail, ls, wc, find, diff, git log/status/diff)
-    # Block anything that could mutate files
-    WRITE_PATTERNS='(>|>>|tee\s|sed\s+-i|perl\s+-[a-z]*i|python3?\s+-c|ruby\s+-e|git\s+(add|commit|push|checkout|reset|rm|mv)|mv\s|cp\s|rm\s|mkdir\s|touch\s|chmod\s|chown\s|ln\s|install\s)'
+    # Block any command that could mutate the filesystem
+    WRITE_PATTERNS='(>|>>|tee\s|sed\s+-i|perl\s+-[a-z]*i|python3?\s+-c|ruby\s+-e|node\s+-e|git\s+(add|commit|push|checkout|reset|rm|mv)|mv\s|cp\s|rm\s|mkdir\s|touch\s|chmod\s|chown\s|ln\s|install\s|curl\s.*-o|wget\s.*-O)'
 
     if echo "$CMD" | grep -qiE "$WRITE_PATTERNS"; then
-        # Exception: allow writes targeting quality_reports/ (anchored)
-        if echo "$CMD" | grep -qE '(^|[\s;|&])quality_reports/'; then
-            exit 0
-        fi
-        echo "BLOCKED by enforce-isolation: Reviewer agent '$AGENT_NAME' cannot run write commands. Use quality_reports/ for output, or file the issue in your report for a fixer agent." >&2
+        echo "BLOCKED by enforce-isolation: Reviewer agent '$AGENT_NAME' cannot run write commands via Bash. Document the issue in your quality_reports/ file; a fixer agent will implement changes." >&2
         exit 2
     fi
 fi

@@ -76,4 +76,16 @@ if echo "$NORM_CMD" | grep -qiE 'curl\s+.*(-d\s*@|-F\s*.*=@|--data-binary\s*@|--
     block "Uploading local files via curl is a data exfiltration risk."
 fi
 
+# 5. SENSITIVE FILE ACCESS VIA INTERPRETERS
+# The deny list in settings.json blocks Read(.env) etc., but interpreters
+# like python3 can still read these files. Block interpreter commands that
+# reference sensitive file patterns.
+SENSITIVE_PATTERNS='(\.env|\.pem|\.key|credentials|secret|id_rsa|id_ed25519|\.aws/|\.ssh/)'
+if echo "$NORM_CMD" | grep -qiE "(python3?|ruby|node|perl)\s.*$SENSITIVE_PATTERNS"; then
+    block "Interpreter command references a sensitive file. Use the Read tool (which enforces the deny list) instead of shell interpreters for file access."
+fi
+if echo "$NORM_CMD" | grep -qiE "(cat|head|tail|less|more|bat)\s+[^\|]*$SENSITIVE_PATTERNS"; then
+    block "Command reads a sensitive file (.env, .pem, .key, credentials). These files are protected by the deny list."
+fi
+
 exit 0
