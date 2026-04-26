@@ -54,7 +54,11 @@ check_required "Claude Code"  "claude"   "https://claude.ai/install"
 check_required "XeLaTeX"      "xelatex"  "https://tug.org/texlive/ (or MacTeX: https://tug.org/mactex/)"
 check_required "Quarto"       "quarto"   "https://quarto.org/docs/get-started/"
 check_required "git"          "git"      "https://git-scm.com/downloads"
-check_required "Python 3"     "python3"  "https://python.org (needed for hooks)"
+if command -v python3 >/dev/null 2>&1; then
+    check_required "Python 3"     "python3"  "https://python.org (needed for hooks)"
+else
+    check_required "Python 3"     "python"   "https://python.org (needed for hooks)"
+fi
 echo ""
 
 echo -e "${BOLD}Recommended tools:${RESET}"
