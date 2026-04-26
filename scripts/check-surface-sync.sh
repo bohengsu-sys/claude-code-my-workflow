@@ -26,13 +26,15 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR" ]; then
     exit 2
 fi
 
+PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
+
 echo "── check-surface-sync ──"
-python3 "$SCRIPT_DIR/check-surface-sync.py" "$@"
+"$PYTHON" "$SCRIPT_DIR/check-surface-sync.py" "$@"
 SYNC_RC=$?
 
 echo ""
 echo "── check-skill-integrity ──"
-python3 "$SCRIPT_DIR/check-skill-integrity.py" "$@"
+"$PYTHON" "$SCRIPT_DIR/check-skill-integrity.py" "$@"
 INTEGRITY_RC=$?
 
 if [ "$SYNC_RC" -gt "$INTEGRITY_RC" ]; then

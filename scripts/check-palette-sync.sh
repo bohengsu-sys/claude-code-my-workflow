@@ -11,4 +11,5 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-exec python3 "$SCRIPT_DIR/check-palette-sync.py" "$@"
+PYTHON=$(command -v python3 2>/dev/null || command -v python 2>/dev/null)
+exec "$PYTHON" "$SCRIPT_DIR/check-palette-sync.py" "$@"
