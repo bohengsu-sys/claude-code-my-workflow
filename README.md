@@ -10,7 +10,7 @@
 
 A ready-to-fork foundation for AI-assisted academic work. You describe what you want — lecture slides, a research paper, a data analysis, a replication package — and Claude plans the approach, runs specialized agents, fixes issues, verifies quality, and presents results. Like a contractor who handles the entire job. Extracted from a production PhD course and extended by a growing [community](#community--extensions).
 
----
+---qwerrtyyuui
 
 ## Quick Start (5–10 minutes, plus ~30 min for first-time installs)
 
